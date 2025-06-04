@@ -1,24 +1,18 @@
 # -*- coding: utf-8 -*-
-"""streamlit_app.py
-
-Transaction Analytics Dashboard for C-Level Executives
-"""
+"""Enhanced Transaction Analytics Dashboard"""
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 from datetime import datetime
-
-try:
-    import plotly.express as px
-    import plotly.graph_objects as go
-except ImportError:
-    st.error("Required packages not found. Please ensure you have plotly installed.")
-    st.stop()
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # Configure page
 st.set_page_config(
-    page_title="Transaction Analytics Dashboard",
-    page_icon="📊",
+    page_title="Advanced Transaction Analytics",
+    page_icon="💹",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -26,167 +20,384 @@ st.set_page_config(
 @st.cache_data(ttl=600)
 def load_data():
     url = "https://raw.githubusercontent.com/Matshisela/imali_simulation_24/main/data/transaction_data_6_months.csv"
-    try:
-        df = pd.read_csv(url, parse_dates=['timestamp'])
-        # Add derived datetime features
-        df['date'] = df['timestamp'].dt.date
-        df['hour'] = df['timestamp'].dt.hour
-        df['day_of_week'] = df['timestamp'].dt.day_name()
-        df['month'] = df['timestamp'].dt.month_name()
-        return df
-    except Exception as e:
-        st.error(f"Error loading data: {str(e)}")
-        st.stop()
+    df = pd.read_csv(url, parse_dates=['timestamp'])
+    
+    # Create business-relevant features
+    df['date'] = df['timestamp'].dt.date
+    df['day_of_week'] = df['timestamp'].dt.day_name()
+    df['hour'] = df['timestamp'].dt.hour
+    df['month'] = df['timestamp'].dt.month_name()
+    df['week_number'] = df['timestamp'].dt.isocalendar().week
+    df['is_weekend'] = df['day_of_week'].isin(['Saturday', 'Sunday'])
+    df['value_segment'] = pd.cut(df['amount'],
+                               bins=[0, 10, 20, 50, 100, np.inf],
+                               labels=['Micro (<$10)', 'Small ($10-20)', 
+                                      'Medium ($20-50)', 'Large ($50-100)', 
+                                      'Premium ($100+)'])
+    return df
 
 df = load_data()
 
-# Sidebar filters
-st.sidebar.header("Filters")
-try:
-    date_range = st.sidebar.date_input(
-        "Date range",
-        value=[df['timestamp'].min().date(), df['timestamp'].max().date()],
-        min_value=df['timestamp'].min().date(),
-        max_value=df['timestamp'].max().date()
+# =============================================
+# SIDEBAR FILTERS
+# =============================================
+st.sidebar.header("Business Filters")
+
+# Date range filter
+date_range = st.sidebar.date_input(
+    "Date Range",
+    value=[df['date'].min(), df['date'].max()],
+    min_value=df['date'].min(),
+    max_value=df['date'].max()
+)
+
+# Dynamic filters
+services = st.sidebar.multiselect(
+    "Services",
+    options=df['service'].unique(),
+    default=df['service'].unique()
+)
+
+payment_methods = st.sidebar.multiselect(
+    "Payment Methods",
+    options=df['payment_method'].unique(),
+    default=df['payment_method'].unique()
+)
+
+statuses = st.sidebar.multiselect(
+    "Status",
+    options=df['status'].unique(),
+    default=['Success']  # Default to only successful transactions
+)
+
+value_segments = st.sidebar.multiselect(
+    "Value Segments",
+    options=df['value_segment'].unique(),
+    default=df['value_segment'].unique()
+)
+
+devices = st.sidebar.multiselect(
+    "Device Types",
+    options=df['device'].unique(),
+    default=df['device'].unique()
+)
+
+# Apply filters
+if len(date_range) == 2:
+    mask = (
+        (df['date'] >= date_range[0]) & 
+        (df['date'] <= date_range[1]) &
+        (df['service'].isin(services)) &
+        (df['payment_method'].isin(payment_methods)) &
+        (df['status'].isin(statuses)) &
+        (df['value_segment'].isin(value_segments)) &
+        (df['device'].isin(devices))
     )
-    
-    if len(date_range) == 2:
-        start_date, end_date = date_range
-        start_datetime = datetime.combine(start_date, datetime.min.time())
-        end_datetime = datetime.combine(end_date, datetime.max.time())
-        filtered_df = df[(df['timestamp'] >= start_datetime) & (df['timestamp'] <= end_datetime)]
-    else:
-        filtered_df = df
+    filtered_df = df[mask]
+else:
+    filtered_df = df.copy()
 
-    services = st.sidebar.multiselect(
-        "Services",
-        options=df['service'].unique(),
-        default=df['service'].unique()
-    )
-
-    payment_methods = st.sidebar.multiselect(
-        "Payment Methods",
-        options=df['payment_method'].unique(),
-        default=df['payment_method'].unique()
-    )
-
-    statuses = st.sidebar.multiselect(
-        "Transaction Status",
-        options=df['status'].unique(),
-        default=df['status'].unique()
-    )
-
-    # Apply filters
-    filtered_df = filtered_df[
-        (filtered_df['service'].isin(services)) &
-        (filtered_df['payment_method'].isin(payment_methods)) &
-        (filtered_df['status'].isin(statuses))
-    ]
-except Exception as e:
-    st.error(f"Error applying filters: {str(e)}")
-    filtered_df = df
-
-# Dashboard UI
-st.title("📊 Transaction Analytics Dashboard")
+# =============================================
+# BUSINESS METRICS DASHBOARD
+# =============================================
+st.title("💰 Transaction Performance Dashboard")
 st.markdown("""
-    <style>
-    .big-font {
-        font-size:18px !important;
-        color: #2a9fd6;
-    }
-    .metric-box {
-        padding: 15px;
-        border-radius: 10px;
-        background-color: #f0f2f6;
-        margin-bottom: 20px;
-    }
-    </style>
-    <p class="big-font">Executive dashboard for monitoring transaction performance</p>
-    """, unsafe_allow_html=True)
+<style>
+.metric-card {
+    padding: 15px;
+    border-radius: 10px;
+    background-color: #f8f9fa;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 15px;
+}
+.metric-title {
+    font-size: 14px;
+    color: #6c757d;
+    margin-bottom: 5px;
+}
+.metric-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #212529;
+}
+.metric-change {
+    font-size: 12px;
+}
+.positive {
+    color: #28a745;
+}
+.negative {
+    color: #dc3545;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# KPI Metrics with improved styling
-st.subheader("Key Performance Indicators")
-cols = st.columns(4)
-
-with cols[0]:
-    st.markdown('<div class="metric-box">', unsafe_allow_html=True)
-    total_transactions = filtered_df.shape[0]
-    st.metric("Total Transactions", f"{total_transactions:,}")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with cols[1]:
-    st.markdown('<div class="metric-box">', unsafe_allow_html=True)
-    total_amount = filtered_df['amount'].sum()
-    st.metric("Total Amount", f"${total_amount:,.2f}")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with cols[2]:
-    st.markdown('<div class="metric-box">', unsafe_allow_html=True)
-    success_rate = (filtered_df[filtered_df['status'] == 'Success'].shape[0] / filtered_df.shape[0]) * 100
-    st.metric("Success Rate", f"{success_rate:.1f}%")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with cols[3]:
-    st.markdown('<div class="metric-box">', unsafe_allow_html=True)
-    unique_users = filtered_df['user_id'].nunique()
-    st.metric("Unique Users", f"{unique_users:,}")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# Visualization functions with error handling
-def create_daily_transactions_chart(data):
-    try:
-        daily_trans = data.groupby('date')['transaction_id'].count().reset_index()
-        fig = px.line(
-            daily_trans,
-            x='date',
-            y='transaction_id',
-            title='Daily Transaction Volume',
-            labels={'date': 'Date', 'transaction_id': 'Transactions'}
+# Calculate comparison metrics (previous period)
+def get_comparison_metrics(df, filtered_df):
+    if len(date_range) == 2:
+        # Calculate previous period dates
+        delta_days = (date_range[1] - date_range[0]).days
+        prev_start = date_range[0] - pd.Timedelta(days=delta_days+1)
+        prev_end = date_range[0] - pd.Timedelta(days=1)
+        
+        # Filter previous period data with same other filters
+        prev_mask = (
+            (df['date'] >= prev_start) & 
+            (df['date'] <= prev_end) &
+            (df['service'].isin(services)) &
+            (df['payment_method'].isin(payment_methods)) &
+            (df['status'].isin(statuses)) &
+            (df['value_segment'].isin(value_segments)) &
+            (df['device'].isin(devices))
         )
-        fig.update_layout(height=400)
-        return fig
-    except Exception as e:
-        st.error(f"Error creating daily transactions chart: {str(e)}")
-        return None
+        prev_df = df[prev_mask]
+        
+        # Calculate metrics
+        current_volume = filtered_df.shape[0]
+        prev_volume = prev_df.shape[0]
+        volume_change = ((current_volume - prev_volume) / prev_volume * 100) if prev_volume > 0 else 0
+        
+        current_amount = filtered_df['amount'].sum()
+        prev_amount = prev_df['amount'].sum()
+        amount_change = ((current_amount - prev_amount) / prev_amount * 100) if prev_amount > 0 else 0
+        
+        current_users = filtered_df['user_id'].nunique()
+        prev_users = prev_df['user_id'].nunique()
+        users_change = ((current_users - prev_users) / prev_users * 100) if prev_users > 0 else 0
+        
+        return {
+            'volume_change': volume_change,
+            'amount_change': amount_change,
+            'users_change': users_change,
+            'prev_volume': prev_volume,
+            'prev_amount': prev_amount,
+            'prev_users': prev_users
+        }
+    return None
 
-# Add more visualization functions similarly...
+comparison = get_comparison_metrics(df, filtered_df)
 
-# Layout for charts
-try:
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        fig = create_daily_transactions_chart(filtered_df)
-        if fig:
-            st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        try:
-            fig = px.box(
-                filtered_df,
-                y='amount',
-                title='Transaction Amount Distribution'
-            )
-            fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
-        except Exception as e:
-            st.error(f"Error creating box plot: {str(e)}")
+# Row 1: Key Business Metrics
+st.subheader("Core Business Performance")
+col1, col2, col3, col4, col5 = st.columns(5)
 
-    # Add more visualizations in similar try-except blocks...
+with col1:
+    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+    st.markdown('<div class="metric-title">Total Transactions</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-value">{filtered_df.shape[0]:,}</div>', unsafe_allow_html=True)
+    if comparison:
+        change_class = "positive" if comparison['volume_change'] >= 0 else "negative"
+        st.markdown(f'<div class="metric-change {change_class}">{"↑" if comparison["volume_change"] >=0 else "↓"} {abs(comparison["volume_change"]):.1f}% vs previous period</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-change">Prev: {comparison["prev_volume"]:,}</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col2:
+    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+    st.markdown('<div class="metric-title">Total Value</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-value">${filtered_df["amount"].sum():,.2f}</div>', unsafe_allow_html=True)
+    if comparison:
+        change_class = "positive" if comparison['amount_change'] >= 0 else "negative"
+        st.markdown(f'<div class="metric-change {change_class}">{"↑" if comparison["amount_change"] >=0 else "↓"} {abs(comparison["amount_change"]):.1f}% vs previous period</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-change">Prev: ${comparison["prev_amount"]:,.2f}</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col3:
+    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+    st.markdown('<div class="metric-title">Unique Customers</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-value">{filtered_df["user_id"].nunique():,}</div>', unsafe_allow_html=True)
+    if comparison:
+        change_class = "positive" if comparison['users_change'] >= 0 else "negative"
+        st.markdown(f'<div class="metric-change {change_class}">{"↑" if comparison["users_change"] >=0 else "↓"} {abs(comparison["users_change"]):.1f}% vs previous period</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-change">Prev: {comparison["prev_users"]:,}</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col4:
+    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+    st.markdown('<div class="metric-title">Avg. Transaction Value</div>', unsafe_allow_html=True)
+    avg_value = filtered_df['amount'].mean()
+    st.markdown(f'<div class="metric-value">${avg_value:,.2f}</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col5:
+    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+    st.markdown('<div class="metric-title">Success Rate</div>', unsafe_allow_html=True)
+    success_rate = (filtered_df['status'] == 'Success').mean() * 100
+    st.markdown(f'<div class="metric-value">{success_rate:.1f}%</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Row 2: Revenue Analysis
+st.subheader("Revenue Analysis")
+col1, col2 = st.columns(2)
+
+with col1:
+    # Revenue by service
+    revenue_by_service = filtered_df.groupby('service')['amount'].sum().sort_values(ascending=False)
+    fig = px.bar(
+        revenue_by_service,
+        title="Revenue by Service",
+        labels={'value': 'Revenue ($)', 'index': 'Service'},
+        color=revenue_by_service.index,
+        text=[f"${x:,.0f}" for x in revenue_by_service.values]
+    )
+    fig.update_layout(showlegend=False)
+    st.plotly_chart(fig, use_container_width=True)
+
+with col2:
+    # Revenue trend
+    daily_revenue = filtered_df.groupby('date')['amount'].sum().reset_index()
+    fig = px.line(
+        daily_revenue,
+        x='date',
+        y='amount',
+        title="Daily Revenue Trend",
+        labels={'amount': 'Revenue ($)', 'date': 'Date'}
+    )
+    fig.update_traces(line=dict(width=3))
+    st.plotly_chart(fig, use_container_width=True)
+
+# Row 3: Customer and Value Analysis
+st.subheader("Customer & Value Segmentation")
+col1, col2, col3 = st.columns([2,1,1])
+
+with col1:
+    # Customer value distribution
+    user_value = filtered_df.groupby('user_id')['amount'].sum()
+    fig = px.histogram(
+        user_value,
+        nbins=20,
+        title="Customer Value Distribution",
+        labels={'value': 'Total Spend per Customer ($)'}
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+with col2:
+    # Transactions by value segment
+    fig = px.pie(
+        filtered_df['value_segment'].value_counts(),
+        names=filtered_df['value_segment'].value_counts().index,
+        title="Transactions by Value Segment",
+        hole=0.4
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+with col3:
+    # Avg. transaction by segment
+    avg_by_segment = filtered_df.groupby('value_segment')['amount'].mean().sort_values()
+    fig = px.bar(
+        avg_by_segment,
+        orientation='h',
+        title="Avg. Transaction by Segment",
+        labels={'value': 'Average Amount ($)', 'index': 'Value Segment'}
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+# Row 4: Payment and Operational Metrics
+st.subheader("Payment & Operational Performance")
+col1, col2 = st.columns(2)
+
+with col1:
+    # Payment method performance
+    payment_stats = filtered_df.groupby('payment_method').agg(
+        total_amount=('amount', 'sum'),
+        success_rate=('status', lambda x: (x == 'Success').mean()),
+        avg_amount=('amount', 'mean')
+    ).sort_values('total_amount', ascending=False)
     
-except Exception as e:
-    st.error(f"Error rendering charts: {str(e)}")
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    fig.add_trace(
+        go.Bar(
+            x=payment_stats.index,
+            y=payment_stats['total_amount'],
+            name="Total Revenue",
+            marker_color='#1f77b4'
+        ),
+        secondary_y=False
+    )
+    
+    fig.add_trace(
+        go.Scatter(
+            x=payment_stats.index,
+            y=payment_stats['success_rate'],
+            name="Success Rate",
+            mode='lines+markers',
+            line=dict(color='#ff7f0e', width=2)
+        ),
+        secondary_y=True
+    )
+    
+    fig.update_layout(
+        title="Payment Method Performance",
+        yaxis_title="Revenue ($)",
+        yaxis2=dict(tickformat=".0%", range=[0, 1]),
+        hovermode="x unified"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+with col2:
+    # Device and time analysis
+    device_hour = filtered_df.pivot_table(
+        index='hour',
+        columns='device',
+        values='transaction_id',
+        aggfunc='count',
+        fill_value=0
+    )
+    
+    fig = px.line(
+        device_hour,
+        title="Hourly Activity by Device",
+        labels={'value': 'Transactions', 'hour': 'Hour of Day'}
+    )
+    fig.update_layout(hovermode="x unified")
+    st.plotly_chart(fig, use_container_width=True)
+
+# Row 5: Customer Retention Metrics
+st.subheader("Customer Behavior Insights")
+
+# Calculate repeat customers
+user_activity = filtered_df.groupby('user_id').agg(
+    transaction_count=('transaction_id', 'count'),
+    first_date=('date', 'min'),
+    last_date=('date', 'max'),
+    total_value=('amount', 'sum')
+).reset_index()
+
+repeat_customers = user_activity[user_activity['transaction_count'] > 1]
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+    st.markdown('<div class="metric-title">Repeat Customers</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-value">{len(repeat_customers):,}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-change">{len(repeat_customers)/len(user_activity):.1%} of total</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col2:
+    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+    st.markdown('<div class="metric-title">Avg. Frequency</div>', unsafe_allow_html=True)
+    avg_freq = user_activity['transaction_count'].mean()
+    st.markdown(f'<div class="metric-value">{avg_freq:.1f} tx/user</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col3:
+    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+    st.markdown('<div class="metric-title">Top 10% Customer Share</div>', unsafe_allow_html=True)
+    top_10_value = user_activity.nlargest(int(len(user_activity)*0.1), 'total_value')['total_value'].sum()
+    total_value = user_activity['total_value'].sum()
+    share = top_10_value / total_value if total_value > 0 else 0
+    st.markdown(f'<div class="metric-value">{share:.1%}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="metric-change">of total revenue</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # Raw data and download
-if st.checkbox("Show raw data"):
-    st.dataframe(filtered_df)
+if st.checkbox("Show filtered data"):
+    st.dataframe(filtered_df.sort_values('timestamp', ascending=False))
 
-try:
-    st.download_button(
-        label="Download Data",
-        data=filtered_df.to_csv(index=False),
-        file_name="transaction_data.csv",
-        mime="text/csv"
-    )
-except Exception as e:
-    st.error(f"Error creating download button: {str(e)}")
+st.download_button(
+    label="Download Filtered Data",
+    data=filtered_df.to_csv(index=False),
+    file_name="filtered_transactions.csv",
+    mime="text/csv"
+)
