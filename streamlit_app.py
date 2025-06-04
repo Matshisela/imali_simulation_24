@@ -255,41 +255,79 @@ with col2:
     fig.update_traces(line=dict(width=3))
     st.plotly_chart(fig, use_container_width=True)
 
-# Row 3: Customer and Value Analysis
-st.subheader("Customer & Value Segmentation")
-col1, col2, col3 = st.columns([2,1,1])
+# =============================================
+# CUSTOMER & VALUE ANALYSIS SECTION - REORGANIZED
+# =============================================
+
+st.subheader("Customer Value Distribution")
+# Full width for the customer value histogram
+fig = px.histogram(
+    filtered_df.groupby('user_id')['amount'].sum(),
+    nbins=20,
+    title="Customer Lifetime Value Distribution",
+    labels={'value': 'Total Spend per Customer ($)', 'count': 'Number of Customers'},
+    color_discrete_sequence=['#1f77b4']
+)
+fig.update_layout(
+    height=400,
+    xaxis_title="Total Customer Spend",
+    yaxis_title="Number of Customers",
+    bargap=0.1
+)
+st.plotly_chart(fig, use_container_width=True)
+
+# Value Segment Analysis in separate row
+st.subheader("Transaction Value Segmentation")
+col1, col2 = st.columns(2)
 
 with col1:
-    # Customer value distribution
-    user_value = filtered_df.groupby('user_id')['amount'].sum()
-    fig = px.histogram(
-        user_value,
-        nbins=20,
-        title="Customer Value Distribution",
-        labels={'value': 'Total Spend per Customer ($)'}
+    # Transactions by value segment (pie chart)
+    segment_counts = filtered_df['value_segment'].value_counts()
+    fig = px.pie(
+        segment_counts,
+        names=segment_counts.index,
+        values=segment_counts.values,
+        title="Transaction Volume by Value Segment",
+        hole=0.3,
+        color_discrete_sequence=px.colors.sequential.Blues_r
+    )
+    fig.update_traces(
+        textposition='inside',
+        textinfo='percent+label',
+        hovertemplate="<b>%{label}</b><br>%{value:,} transactions (%{percent})"
+    )
+    fig.update_layout(
+        uniformtext_minsize=12,
+        uniformtext_mode='hide',
+        height=400
     )
     st.plotly_chart(fig, use_container_width=True)
 
 with col2:
-    # Transactions by value segment
-    fig = px.pie(
-        filtered_df['value_segment'].value_counts(),
-        names=filtered_df['value_segment'].value_counts().index,
-        title="Transactions by Value Segment",
-        hole=0.4
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-with col3:
-    # Avg. transaction by segment
+    # Average transaction by segment (horizontal bar chart)
     avg_by_segment = filtered_df.groupby('value_segment')['amount'].mean().sort_values()
     fig = px.bar(
         avg_by_segment,
         orientation='h',
-        title="Avg. Transaction by Segment",
-        labels={'value': 'Average Amount ($)', 'index': 'Value Segment'}
+        title="Average Transaction Value by Segment",
+        labels={'value': 'Average Amount ($)', 'index': 'Value Segment'},
+        color=avg_by_segment.index,
+        color_discrete_sequence=px.colors.sequential.Blues_r,
+        text=[f"${x:,.2f}" for x in avg_by_segment.values]
+    )
+    fig.update_layout(
+        height=400,
+        showlegend=False,
+        xaxis_title="Average Transaction Amount ($)",
+        yaxis_title="Value Segment",
+        hovermode="y unified"
+    )
+    fig.update_traces(
+        textposition='outside',
+        textfont_size=12
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
 # Row 4: Payment and Operational Metrics
 st.subheader("Payment & Operational Performance")
