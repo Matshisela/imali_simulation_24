@@ -19,7 +19,7 @@ st.set_page_config(
 
 @st.cache_data(ttl=600)
 def load_data():
-    url = "https://raw.githubusercontent.com/Matshisela/imali_simulation_24/main/data/transaction_data_6_months.csv"
+    url = "https://raw.githubusercontent.com/Matshisela/imali_simulation_24/refs/heads/main/data/transaction_data_1_year.csv"
     df = pd.read_csv(url, parse_dates=['timestamp'])
     
     # Create business-relevant features
