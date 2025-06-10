@@ -23,6 +23,7 @@ A powerful business intelligence dashboard for analyzing transaction patterns, c
 git clone https://github.com/Matshisela/imali_simulation_24.git
 cd transaction-analytics
 pip install -r requirements.txt
+```
 
 📊 Dashboard Components
 Business Metrics
