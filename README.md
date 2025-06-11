@@ -1,9 +1,7 @@
 # 📊 Advanced Transaction Analytics Dashboard
 
 [![Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://your-app.streamlit.app/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://python.org)
-[![CI/CD](https://github.com/yourname/transaction-analytics/actions/workflows/deploy.yml/badge.svg)](https://github.com/yourname/transaction-analytics/actions)
 
 A powerful business intelligence dashboard for analyzing transaction patterns, customer behavior, and revenue performance.
 
